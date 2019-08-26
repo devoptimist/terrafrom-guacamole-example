@@ -40,6 +40,7 @@ module "win_infra" {
   server_image_name           = var.windows_image_name
   server_image_owner          = var.windows_image_owner
   server_root_disk_size       = var.windows_root_disk_size
+  server_instance_type        = var.windows_instance_type
   subnets                     = module.vpc.public_subnets
   instance_name               = "win"
   vpc_id                      = module.vpc.vpc_id
@@ -60,6 +61,7 @@ module "linux_infra" {
   user_private_key            = var.user_private_key
   server_image_name           = var.linux_image_name
   server_image_owner          = var.linux_image_owner
+  server_instance_type        = var.linux_instance_type
   subnets                     = module.vpc.public_subnets
   instance_name               = "linux"
   vpc_id                      = module.vpc.vpc_id
@@ -72,30 +74,20 @@ module "guacamole_infra" {
   server_count          = var.guacamole_count
   server_image_name     = var.guacamole_image_name
   server_image_owner    = var.guacamole_image_owner
+  server_instance_type  = var.guacamole_instance_type
   key_name              = var.key_name
   create_user           = var.create_user
   user_name             = var.user_name
   user_public_key       = var.user_public_key
   sec_grp_ingress_rules = var.guacamole_ingress_rules
   subnets               = module.vpc.public_subnets
-  instance_name         = "guacamole"
+  instance_name         = var.guacamole_hostname
   vpc_id                = module.vpc.vpc_id
   tags                  = var.tags
 }
 
 locals {
-  con = [
-    {
-      "ui_user" = module.linux_infra.guacamole_user,
-      "ui_pass" = module.linux_infra.guacamole_pass,
-      "connections" = module.linux_infra.guacamole_connections
-    },
-    {
-      "ui_user" = module.win_infra.guacamole_user,
-      "ui_pass" = module.win_infra.guacamole_pass,
-      "connections" = module.win_infra.guacamole_connections
-    }
-  ]
+  guacamole_records = { for ip in module.guacamole_infra.server_public_ip : "${var.guacamole_hostname}-${index(module.guacamole_infra.server_public_ip, ip)}" => ip }
   con_n = [
     {
       "ui_user" = module.linux_infra.guacamole_user,
@@ -105,12 +97,28 @@ locals {
  ]
 }
 
+module "guacamole_dns_and_cert" {
+  source         = "devoptimist/record-certs/dnsimple"
+  version        = "0.0.1"
+  records        = local.guacamole_records
+  instance_count = var.guacamole_count
+  contact        = lookup(var.tags, "contact")
+  domain_name    = var.dnsimple_domain_name
+  issuer_url     = var.issuer_url
+  oauth_token    = var.dnsimple_oauth_token
+  account        = var.dnsimple_account
+}
+
 module "guacamole_server" {
-  source                             = "devoptimist/apache-guacamole/linux"
-  version                            = "0.0.2"
-  ips                                = module.guacamole_infra.server_public_ip
-  instance_count                     = var.guacamole_count
-  user_name                          = var.user_name
-  user_private_key                   = var.user_private_key
-  guacamole_client_connection_config = local.con_n
+  source                                 = "devoptimist/apache-guacamole/linux"
+  version                                = "0.0.3"
+  ips                                    = module.guacamole_infra.server_public_ip
+  instance_count                         = var.guacamole_count
+  user_name                              = var.user_name
+  user_private_key                       = var.user_private_key
+  guacamole_client_connection_config     = local.con_n
+  guacamole_client_tomcat_listen_address = "127.0.0.1"
+  guacamole_webserver_hostname           = module.guacamole_dns_and_cert.certificate_domain[0]
+  guacamole_webserver_ssl_crt            = module.guacamole_dns_and_cert.certificate_pem[0]
+  guacamole_webserver_ssl_key            = module.guacamole_dns_and_cert.private_key_pem[0]
 }

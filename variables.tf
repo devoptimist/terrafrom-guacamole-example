@@ -1,3 +1,11 @@
+########### guacamole settings ##################
+
+variable "guacamole_hostname" {
+  description = "The name to pass to the webproxy frontend and to use for ssl certs"
+  type        = string
+  default     = "demo-portal"
+}
+
 ########### aws details #########################
 
 variable "tags" {
@@ -146,4 +154,23 @@ variable "user_public_key" {
 variable "user_private_key" {
   type    = string
   default = ""
+}
+
+########### dns settings ########################
+
+variable "dnsimple_oauth_token" {
+  type = string
+}
+
+variable "dnsimple_account" {
+  type = string
+}
+
+variable "dnsimple_domain_name" {
+  type = string
+}
+
+variable "issuer_url" {
+  type    = string
+  default = "https://acme-staging-v02.api.letsencrypt.org/directory"
 }
